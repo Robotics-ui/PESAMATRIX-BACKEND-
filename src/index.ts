@@ -2,23 +2,45 @@ import express from 'express';
 import { ENV } from './config/env';
 import { metaApiWorker } from './queue/metaapi.queue';
 
+import authRoutes from './routes/auth.routes';
+import accountRoutes from './routes/account.routes';
+import copyRoutes from './routes/copy.routes';
+
 const app = express();
+
+// Middleware
 app.use(express.json());
 
-// Readiness probe for continuous cloud operations
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/accounts', accountRoutes);
+app.use('/api/copy', copyRoutes);
+
+// Health Check Endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'HEALTHY', timestamp: new Date() });
+  res.status(200).json({
+    status: 'HEALTHY',
+    timestamp: new Date().toISOString(),
+    service: 'PesaMatrix Engine Core'
+  });
 });
 
-// Event listener loops safely ensuring worker stability
+// Queue Event Monitoring
 metaApiWorker.on('completed', (job) => {
-  console.log(`[Queue Success] Task completed cleanly: Job ID ${job.id}`);
+  console.log(
+    `[Queue Success] Task completed successfully. Job ID: ${job.id}`
+  );
 });
 
 metaApiWorker.on('failed', (job, err) => {
-  console.error(`[Queue Failure] Job ID ${job?.id} failed with message: ${err.message}`);
+  console.error(
+    `[Queue Failure] Job ID ${job?.id} failed: ${err.message}`
+  );
 });
 
+// Start Server
 app.listen(ENV.PORT, () => {
-  console.log(`🚀 PesaMatrix Engine Core running flawlessly on port ${ENV.PORT}`);
+  console.log(
+    `🚀 PesaMatrix Engine Core running on port ${ENV.PORT}`
+  );
 });
