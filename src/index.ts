@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.routes';
 import accountRoutes from './routes/account.routes';
 import copyRoutes from './routes/copy.routes';
 import paymentRoutes from './routes/payment.routes';
+import analyticsRoutes from './routes/analytics.routes';
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/copy', copyRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Health Check Endpoint
 app.get('/health', (req, res) => {
@@ -27,11 +29,13 @@ app.get('/health', (req, res) => {
     status: 'HEALTHY',
     timestamp: new Date().toISOString(),
     service: 'PesaMatrix Cloud Engine',
+    architecture: 'MetaApi CopyFactory Cloud-to-Cloud',
     modules: {
       authentication: 'ACTIVE',
       accounts: 'ACTIVE',
       copyTrading: 'ACTIVE',
       payments: 'ACTIVE',
+      analytics: 'ACTIVE',
       enforcement: 'ACTIVE',
       scheduling: 'ACTIVE'
     }
@@ -54,7 +58,7 @@ metaApiWorker.on('failed', (job, err) => {
 // Enforcement Queue Monitoring
 enforcementWorker.on('completed', (job) => {
   console.log(
-    `[Enforcement Queue] Sweep cycle completed. Job ID: ${job.id}`
+    `[Enforcement Queue] Verification sweep completed. Job ID: ${job.id}`
   );
 });
 
@@ -67,16 +71,20 @@ enforcementWorker.on('failed', (job, err) => {
 // Server Startup
 app.listen(ENV.PORT, async () => {
   console.log(`
-=================================================
-🚀 PesaMatrix Cloud Engine Started
+=============================================================
+🚀 PESAMATRIX CLOUD ENGINE STARTED
 📡 Port: ${ENV.PORT}
+🔒 Architecture: MetaApi CopyFactory Cloud-to-Cloud
+💾 Database: PostgreSQL + Prisma ORM
+⚡ Queue Engine: Upstash Redis + BullMQ
 🔐 Authentication Module: Active
 🏦 Account Management Module: Active
 📈 Copy Trading Module: Active
 💳 Payments Module: Active
+📊 Analytics Module: Active
 🛡️ Enforcement Engine: Active
 ⏰ Cron Scheduler: Initializing
-=================================================
+=============================================================
 `);
 
   try {
