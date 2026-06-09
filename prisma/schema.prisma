@@ -1,0 +1,90 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AccountType {
+  MASTER
+  SUBSCRIBER
+}
+
+enum ConnectionStatus {
+  DISCONNECTED
+  PROVISIONING
+  CONNECTED
+  FAILED
+}
+
+model User {
+  id                 String           @id @default(uuid())
+  email              String           @unique
+  passwordHash       String
+  subscriptionStatus Boolean          @default(false)
+  subscriptionExpiry DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  tradingAccounts    TradingAccount[]
+  payments           Payment[]
+}
+
+model TradingAccount {
+  id               String           @id @default(uuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metaApiAccountId String           @unique
+  accountType      AccountType
+  login            String
+  password         String
+  server           String
+  connectionStatus ConnectionStatus @default(DISCONNECTED)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  
+  // Relations for CopyFactory management
+  managedStrategy  CopyStrategy?    @relation("MasterStrategy")
+  subscriptions    StrategySubscription[] @relation("SubscriberAccount")
+}
+
+model CopyStrategy {
+  id               String           @id @default(uuid())
+  masterAccountId  String           @unique
+  masterAccount    TradingAccount   @relation("MasterStrategy", fields: [masterAccountId], references: [id], onDelete: Cascade)
+  metaApiStrategyId String          @unique
+  name             String
+  createdAt        DateTime         @default(now())
+  
+  subscriptions    StrategySubscription[]
+}
+
+model StrategySubscription {
+  id                  String         @id @default(uuid())
+  subscriberAccountId String
+  subscriberAccount   TradingAccount @relation("SubscriberAccount", fields: [subscriberAccountId], references: [id], onDelete: Cascade)
+  strategyId          String
+  strategy            CopyStrategy   @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  metaApiSubscriberId String         @unique
+  riskMultiplier      Float          @default(1.0)
+  isActive            Boolean        @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([subscriberAccountId, strategyId])
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount         Float
+  phoneNumber    String
+  mpesaReceipt   String?  @unique
+  status         String   // PENDING, COMPLETED, FAILED
+  merchantRequestID String @unique
+  checkoutRequestID String @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
