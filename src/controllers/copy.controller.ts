@@ -26,10 +26,12 @@ export const createStrategy = async (req: AuthenticatedRequest, res: Response): 
       }
     });
 
-    await metaApiQueue.add('CREATE_COPY_STRATEGY', {
-      type: 'CREATE_COPY_STRATEGY',
-      payload: { strategyId: strategy.id, masterMetaApiId: masterAccount.metaApiAccountId, name }
-    });
+    if (metaApiQueue) {
+      await metaApiQueue.add('CREATE_COPY_STRATEGY', {
+        type: 'CREATE_COPY_STRATEGY',
+        payload: { strategyId: strategy.id, masterMetaApiId: masterAccount.metaApiAccountId, name }
+      });
+    }
 
     res.status(202).json({ message: 'Strategy creation queued inside the CopyFactory engine.', strategyId: strategy.id });
   } catch (error: any) {
@@ -73,15 +75,17 @@ export const subscribeToStrategy = async (req: AuthenticatedRequest, res: Respon
       }
     });
 
-    await metaApiQueue.add('SUBSCRIBE_ACCOUNT', {
-      type: 'SUBSCRIBE_ACCOUNT',
-      payload: {
-        subscriptionId: subscription.id,
-        strategyMetaApiId: strategy.metaApiStrategyId,
-        subscriberMetaApiId: subscriberAccount.metaApiAccountId,
-        riskMultiplier: subscription.riskMultiplier
-      }
-    });
+    if (metaApiQueue) {
+      await metaApiQueue.add('SUBSCRIBE_ACCOUNT', {
+        type: 'SUBSCRIBE_ACCOUNT',
+        payload: {
+          subscriptionId: subscription.id,
+          strategyMetaApiId: strategy.metaApiStrategyId,
+          subscriberMetaApiId: subscriberAccount.metaApiAccountId,
+          riskMultiplier: subscription.riskMultiplier
+        }
+      });
+    }
 
     res.status(202).json({ message: 'Subscription linkage queued successfully.', subscriptionId: subscription.id });
   } catch (error: any) {

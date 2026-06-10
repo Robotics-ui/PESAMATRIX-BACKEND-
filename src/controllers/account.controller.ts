@@ -29,13 +29,17 @@ export const provisionAccount = async (req: AuthenticatedRequest, res: Response)
     });
 
     // 2. Queue the heavy cloud setup task out of the request loop
-    await metaApiQueue.add('PROVISION_TERMINAL', {
-      type: 'PROVISION_TERMINAL',
-      payload: { accountId: account.id, login, password, server }
-    });
+    if (metaApiQueue) {
+      await metaApiQueue.add('PROVISION_TERMINAL', {
+        type: 'PROVISION_TERMINAL',
+        payload: { accountId: account.id, login, password, server }
+      });
+    }
 
     res.status(202).json({
-      message: 'Account provisioning initiated natively on MetaApi infrastructure.',
+      message: metaApiQueue
+        ? 'Account provisioning initiated natively on MetaApi infrastructure.'
+        : 'Account registered. MetaApi provisioning will begin once METAAPI_TOKEN and UPSTASH_REDIS_URL are configured.',
       accountId: account.id,
       status: 'PROVISIONING'
     });
