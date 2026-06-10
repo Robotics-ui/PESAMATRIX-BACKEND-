@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { ENV, IS_REDIS_CONFIGURED } from './config/env';
 
 import { metaApiWorker } from './queue/metaapi.queue';
@@ -39,6 +40,7 @@ const corsOptions: cors.CorsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountRoutes);

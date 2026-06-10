@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PesaMatrix — Sign In</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: #0f0f13;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .card {
+      background: #1a1a24;
+      border: 1px solid #2d2d3d;
+      border-radius: 16px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 420px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 1.8rem;
+    }
+    .logo-icon {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem;
+    }
+    .logo-text { font-size: 1.3rem; font-weight: 700; color: #fff; }
+    .logo-sub { font-size: 0.75rem; color: #64748b; }
+    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .subtitle { color: #64748b; font-size: 0.9rem; margin-bottom: 1.6rem; }
+    label { display: block; font-size: 0.78rem; font-weight: 600; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 0.4rem; }
+    .field { margin-bottom: 1.1rem; }
+    input {
+      width: 100%;
+      background: #0f0f13;
+      border: 1px solid #2d2d3d;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #7c3aed; }
+    .btn {
+      width: 100%;
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.85rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 0.5rem;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .alert {
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.88rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+    .alert.error { background: #2d1515; border: 1px solid #7f1d1d; color: #fca5a5; display: block; }
+    .alert.success { background: #0f2d1a; border: 1px solid #14532d; color: #86efac; display: block; }
+    .footer { text-align: center; margin-top: 1.2rem; font-size: 0.875rem; color: #64748b; }
+    .footer a { color: #a855f7; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-icon">₿</div>
+      <div>
+        <div class="logo-text">PesaMatrix</div>
+        <div class="logo-sub">Cloud Engine v2.0</div>
+      </div>
+    </div>
+
+    <h1>Sign In</h1>
+    <p class="subtitle">Enter your credentials to access the platform.</p>
+
+    <div class="alert" id="alert"></div>
+
+    <form id="loginForm">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="email" placeholder="you@example.com" required />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="••••••••" required />
+      </div>
+      <button class="btn" type="submit" id="submitBtn">Sign In</button>
+    </form>
+
+    <p class="footer">No account? <a href="/register.html">Create one</a></p>
+  </div>
+
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const alert = document.getElementById('alert');
+      const btn = document.getElementById('submitBtn');
+      alert.className = 'alert';
+      alert.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Signing in…';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value,
+            password: document.getElementById('password').value
+          })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert.className = 'alert error';
+          alert.textContent = data.error || 'Login failed.';
+          return;
+        }
+
+        localStorage.setItem('pm_token', data.token);
+        localStorage.setItem('pm_user', JSON.stringify(data.user));
+
+        if (data.user.forcePasswordChange) {
+          window.location.href = '/change-password.html';
+        } else {
+          alert.className = 'alert success';
+          alert.textContent = 'Signed in successfully! Redirecting…';
+          setTimeout(() => { window.location.href = '/dashboard.html'; }, 800);
+        }
+      } catch (err) {
+        alert.className = 'alert error';
+        alert.textContent = 'Network error. Please try again.';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    });
+  </script>
+</body>
+</html>
