@@ -1,0 +1,165 @@
+PesaMatrix Backend Upgrade Requirements
+
+Important:
+
+- Upgrade and extend the existing codebase.
+- Do NOT remove, rewrite, or break existing functionality.
+- Preserve current routes, authentication, payments, analytics, queues, workers, and database structure where possible.
+- Implement production-ready features using PostgreSQL, Prisma, Upstash Redis, BullMQ, and MetaApi CopyFactory.
+
+1. Admin Account Seeding
+
+Seed the following administrator account during startup or migration:
+
+Email:
+craigphilip761@gmail.com
+
+Requirements:
+
+- Create admin user if it does not already exist.
+- Generate a secure temporary password.
+- Store password hashed.
+- Force password change on first login.
+- Add field such as forcePasswordChange=true.
+- Redirect admin to password change flow after first login.
+
+2. Cloud-to-Cloud Copy Trading Architecture
+
+Implement pure cloud-to-cloud architecture using MetaApi and CopyFactory.
+
+Do NOT use:
+
+- VPS
+- MT4/MT5 terminals on Replit
+- Trade copier EAs
+- Signal bridges
+- Local terminal synchronization
+
+Requirements:
+
+- Allow registration of subscriber/slave MT5 accounts through MetaApi.
+- Store MetaApi account IDs.
+- Support multiple master accounts.
+- Support multiple signal groups.
+- Support multiple queues and workers.
+- Scale using BullMQ and Redis workers.
+
+3. Trade Replication
+
+Any action on a master account must automatically replicate to active subscribers:
+
+Open Trade:
+
+- Symbol
+- Volume
+- Buy/Sell
+
+Modify Trade:
+
+- Stop Loss
+- Take Profit
+- Partial closes
+- Volume modifications
+
+Close Trade:
+
+- Full closure
+
+Requirements:
+
+- Use CopyFactory APIs.
+- Maintain mapping between master trades and subscriber trades.
+- Handle retries and failures through BullMQ.
+- Log all replication events.
+
+4. Subscription Enforcement
+
+Only paid subscribers should receive copied trades.
+
+Requirements:
+
+- Before replication validate:
+  - Subscription active
+  - Payment confirmed
+  - Expiry date not reached
+
+If subscription expired:
+
+- Disable copying immediately
+- Remove from active replication groups
+- Record enforcement action
+
+5. M-Pesa Production Integration
+
+Implement live production M-Pesa STK Push.
+
+Requirements:
+
+- Use production Daraja endpoints.
+- No sandbox configuration.
+- Support STK initiation.
+- Support callback processing.
+- Support payment verification.
+- Support retries.
+- Record all transactions.
+
+6. Subscription Management
+
+Admin must be able to configure:
+
+- Subscription fee per trading day
+- Minimum subscription days
+- Maximum subscription days
+
+Store settings in database and expose secure admin APIs.
+
+7. Trading Day Logic
+
+Trading days are Monday to Friday only.
+
+Requirements:
+
+- Subscription calculations must exclude Saturdays and Sundays.
+- Expiry dates should count only trading days.
+- Analytics should display remaining trading days.
+
+8. Queues and Workers
+
+Implement dedicated workers:
+
+- Copy execution worker
+- Payment worker
+- Subscription enforcement worker
+- Analytics worker
+
+Requirements:
+
+- Use BullMQ.
+- Use Upstash Redis.
+- Support retries and monitoring.
+- Maintain detailed logs.
+
+9. Audit and Analytics
+
+Track:
+
+- Active subscribers
+- Expired subscribers
+- Revenue
+- Successful copied trades
+- Failed copied trades
+- Master account performance
+- Subscription statistics
+
+10. Production Readiness
+
+Provide:
+
+- Database migrations
+- Prisma schema updates
+- Seed scripts
+- Queue registrations
+- API documentation
+- Postman collection updates
+
+Preserve all existing functionality and extend the system without breaking current routes.

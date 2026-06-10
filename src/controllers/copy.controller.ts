@@ -41,6 +41,13 @@ export const subscribeToStrategy = async (req: AuthenticatedRequest, res: Respon
   try {
     const { subscriberAccountId, strategyId, riskMultiplier } = req.body;
 
+    // Subscription enforcement: only paid, active subscribers may link to copy strategies
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!currentUser?.subscriptionStatus || !currentUser?.subscriptionExpiry || currentUser.subscriptionExpiry < new Date()) {
+      res.status(403).json({ error: 'An active paid subscription is required to receive copied trades.' });
+      return;
+    }
+
     const subscriberAccount = await prisma.tradingAccount.findFirst({
       where: { id: subscriberAccountId, userId: req.user!.id, accountType: 'SUBSCRIBER' }
     });

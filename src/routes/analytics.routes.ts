@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { getDashboardStats } from '../controllers/analytics.controller';
+import { getDashboardStats, getSubscriptionStats } from '../controllers/analytics.controller';
 import { authenticateJWT } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Protect metrics streaming vectors using standard user token keys
 router.get('/dashboard-stats', authenticateJWT, getDashboardStats);
+router.get('/subscription-stats', authenticateJWT, getSubscriptionStats);
 
 export default router;

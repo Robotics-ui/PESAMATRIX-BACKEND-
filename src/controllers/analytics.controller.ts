@@ -1,14 +1,24 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { PrismaClient } from '@prisma/client';
-import MetaApi from 'metaapi.cloud-sdk';
-import { ENV } from '../config/env';
+import { ENV, IS_METAAPI_CONFIGURED } from '../config/env';
+import { countRemainingTradingDays } from '../utils/tradingDays';
 
 const prisma = new PrismaClient();
-const metaApi = new MetaApi(ENV.METAAPI_TOKEN);
+
+const getMetaApi = () => {
+  if (!IS_METAAPI_CONFIGURED) throw new Error('METAAPI_TOKEN not configured');
+  const MetaApi = require('metaapi.cloud-sdk').default;
+  return new MetaApi(ENV.METAAPI_TOKEN);
+};
 
 export const getDashboardStats = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (!IS_METAAPI_CONFIGURED) {
+      res.status(503).json({ error: 'MetaApi is not configured.' });
+      return;
+    }
+
     const { masterAccountId } = req.query;
 
     if (!masterAccountId) {
@@ -29,6 +39,7 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
+    const metaApi = getMetaApi();
     const account = await metaApi.metatraderAccountApi.getAccount(masterAccount.metaApiAccountId);
 
     const connection = account.getStreamingConnection();
@@ -86,7 +97,45 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
       chartData: signalHistory.slice(-15).map((s: any) => ({ time: s.time, profit: s.profit })),
       recentSignals: signalHistory.slice(-6).reverse()
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
 
+export const getSubscriptionStats = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { subscriptionStatus: true, subscriptionExpiry: true }
+    });
+
+    if (!user) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+
+    const remainingTradingDays = user.subscriptionExpiry
+      ? countRemainingTradingDays(user.subscriptionExpiry)
+      : 0;
+
+    const payments = await prisma.payment.findMany({
+      where: { userId: req.user!.id, status: 'COMPLETED' },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { amount: true, subscriptionDays: true, mpesaReceipt: true, createdAt: true }
+    });
+
+    const settings = await prisma.subscriptionSettings.findFirst();
+
+    res.status(200).json({
+      subscriptionActive: user.subscriptionStatus,
+      subscriptionExpiry: user.subscriptionExpiry,
+      remainingTradingDays,
+      feePerDay: settings?.feePerDay ?? 100,
+      minDays: settings?.minDays ?? 1,
+      maxDays: settings?.maxDays ?? 30,
+      recentPayments: payments
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

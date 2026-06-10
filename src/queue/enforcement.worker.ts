@@ -15,7 +15,7 @@ const createWorker = () => new Worker(
   'EnforcementTasks',
   async (job: Job) => {
     if (job.name === 'SWEEP_EXPIRED_SUBSCRIPTIONS') {
-      console.log('[Cron Worker] Initiating system-wide subscription expiry sweep...');
+      console.log('[Enforcement] Initiating system-wide subscription expiry sweep...');
 
       const now = new Date();
       const expiredUsers = await prisma.user.findMany({
@@ -28,26 +28,30 @@ const createWorker = () => new Worker(
       });
 
       if (expiredUsers.length === 0) {
-        console.log('[Cron Worker] Verification check complete. Zero expired records found.');
+        console.log('[Enforcement] Sweep complete. Zero expired subscriptions found.');
         return;
       }
 
-      const configApi = getCopyFactory().configurationApi;
+      console.log(`[Enforcement] Found ${expiredUsers.length} expired user(s). Revoking access...`);
+
+      const configApi = IS_METAAPI_CONFIGURED ? getCopyFactory().configurationApi : null;
 
       for (const user of expiredUsers) {
-        console.log(`[Expiry Triggered] Revoking access for User ID: ${user.id}`);
+        console.log(`[Enforcement] Revoking access for User ID: ${user.id}`);
 
         for (const account of user.tradingAccounts) {
           for (const sub of account.subscriptions) {
             try {
-              await configApi.removeSubscriber(sub.metaApiSubscriberId);
+              if (configApi) {
+                await configApi.removeSubscriber(sub.metaApiSubscriberId);
+              }
               await prisma.strategySubscription.update({
                 where: { id: sub.id },
                 data: { isActive: false }
               });
-              console.log(`[MetaApi Sync] Removed subscriber: ${sub.metaApiSubscriberId}`);
+              console.log(`[Enforcement] Removed subscriber: ${sub.metaApiSubscriberId}`);
             } catch (error: any) {
-              console.error(`[MetaApi Error] Failed to revoke ${sub.metaApiSubscriberId}: ${error.message}`);
+              console.error(`[Enforcement] Failed to revoke ${sub.metaApiSubscriberId}: ${error.message}`);
             }
           }
 
@@ -62,8 +66,19 @@ const createWorker = () => new Worker(
           data: { subscriptionStatus: false }
         });
 
-        console.log(`[Status Complete] Access restricted for User ID: ${user.id}`);
+        await prisma.auditLog.create({
+          data: {
+            userId: user.id,
+            action: 'SUBSCRIPTION_EXPIRED_ENFORCEMENT',
+            details: `Subscription expired at ${user.subscriptionExpiry?.toISOString()}. Access revoked automatically.`,
+            performedBy: 'SYSTEM'
+          }
+        });
+
+        console.log(`[Enforcement] Access revoked for User ID: ${user.id}`);
       }
+
+      console.log(`[Enforcement] Sweep complete. Processed ${expiredUsers.length} user(s).`);
     }
   },
   { ...queueConnectionOptions, concurrency: 1 }

@@ -1,66 +1,97 @@
 import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import { PrismaClient } from '@prisma/client';
-import crypto from 'crypto';
-import { ENV } from '../config/env';
+import { ENV, IS_MPESA_CONFIGURED } from '../config/env';
+import { addTradingDays } from '../utils/tradingDays';
 
 const prisma = new PrismaClient();
 
-// Helper: Generate Safaricom OAuth Access Token
+const DARAJA_BASE = 'https://api.safaricom.co.ke';
+const DARAJA_OAUTH_URL = `${DARAJA_BASE}/oauth/v1/generate?grant_type=client_credentials`;
+const DARAJA_STK_URL = `${DARAJA_BASE}/mpesa/stkpush/v1/processrequest`;
+const DARAJA_STK_QUERY_URL = `${DARAJA_BASE}/mpesa/stkpushquery/v1/query`;
+
 const getDarajaToken = async (): Promise<string> => {
   const credentials = Buffer.from(`${ENV.MPESA.CONSUMER_KEY}:${ENV.MPESA.CONSUMER_SECRET}`).toString('base64');
-  
-  const response = await fetch('https://safaricom.co.ke', {
+
+  const response = await fetch(DARAJA_OAUTH_URL, {
     method: 'GET',
     headers: { Authorization: `Basic ${credentials}` }
   });
 
   if (!response.ok) {
-    throw new Error('M-Pesa auth token generation failed.');
+    const text = await response.text();
+    throw new Error(`M-Pesa auth token generation failed: ${response.status} ${text}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as any;
   return data.access_token;
 };
 
-// Initiate STK Push
+const buildTimestampAndPassword = () => {
+  const timestamp = new Date().toISOString().replace(/[-T:Z.]/g, '').slice(0, 14);
+  const password = Buffer.from(`${ENV.MPESA.SHORTCODE}${ENV.MPESA.PASSKEY}${timestamp}`).toString('base64');
+  return { timestamp, password };
+};
+
 export const initiateStkPush = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user!.id;
-    const { phoneNumber, amount } = req.body;
-
-    if (!phoneNumber || !amount) {
-      res.status(400).json({ error: 'Phone number and amount are required.' });
+    if (!IS_MPESA_CONFIGURED) {
+      res.status(503).json({ error: 'M-Pesa credentials are not configured.' });
       return;
     }
 
-    // Format phone to Safaricom standard: 254XXXXXXXXX
-    const formattedPhone = phoneNumber.startsWith('0') 
-      ? `254${phoneNumber.slice(1)}` 
+    const userId = req.user!.id;
+    const { phoneNumber, days } = req.body;
+
+    if (!phoneNumber || !days) {
+      res.status(400).json({ error: 'Phone number and number of subscription days are required.' });
+      return;
+    }
+
+    const parsedDays = parseInt(days, 10);
+    if (isNaN(parsedDays) || parsedDays < 1) {
+      res.status(400).json({ error: 'Days must be a positive integer.' });
+      return;
+    }
+
+    const settings = await prisma.subscriptionSettings.findFirst();
+    if (!settings) {
+      res.status(500).json({ error: 'Subscription settings not configured.' });
+      return;
+    }
+
+    if (parsedDays < settings.minDays || parsedDays > settings.maxDays) {
+      res.status(400).json({
+        error: `Subscription days must be between ${settings.minDays} and ${settings.maxDays}.`
+      });
+      return;
+    }
+
+    const amount = Math.ceil(settings.feePerDay * parsedDays);
+
+    const formattedPhone = phoneNumber.startsWith('0')
+      ? `254${phoneNumber.slice(1)}`
       : phoneNumber.replace('+', '');
 
     const token = await getDarajaToken();
-    const timestamp = new Date().toISOString().replace(/[-T:Z.]/g, '').slice(0, 14);
-    const password = Buffer.from(`${ENV.MPESA.SHORTCODE}${ENV.MPESA.PASSKEY}${timestamp}`).toString('base64');
-
-    // Use a unique tracking callback URL (Production should use a static, secure domain)
-    const callbackUrl = `https://yourdomain.com`;
+    const { timestamp, password } = buildTimestampAndPassword();
 
     const payload = {
       BusinessShortCode: ENV.MPESA.SHORTCODE,
       Password: password,
       Timestamp: timestamp,
-      TransactionType: 'CustomerPayBillOnline', // Or CustomerBuyGoodsOnline
-      Amount: Math.ceil(amount),
+      TransactionType: 'CustomerPayBillOnline',
+      Amount: amount,
       PartyA: formattedPhone,
       PartyB: ENV.MPESA.SHORTCODE,
       PhoneNumber: formattedPhone,
-      CallBackURL: callbackUrl,
+      CallBackURL: ENV.MPESA_CALLBACK_URL,
       AccountReference: 'PesaMatrix VIP',
-      TransactionDesc: 'SaaS Subscription CopyTrading Activation'
+      TransactionDesc: `PesaMatrix ${parsedDays}-day copy trading subscription`
     };
 
-    const response = await fetch('https://safaricom.co.ke', {
+    const response = await fetch(DARAJA_STK_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -69,15 +100,15 @@ export const initiateStkPush = async (req: AuthenticatedRequest, res: Response):
       body: JSON.stringify(payload)
     });
 
-    const data = await response.json();
+    const data = await response.json() as any;
 
     if (data.ResponseCode === '0') {
-      // Log the transaction state as PENDING inside PostgreSQL
       await prisma.payment.create({
         data: {
           userId,
-          amount: parseFloat(amount),
+          amount,
           phoneNumber: formattedPhone,
+          subscriptionDays: parsedDays,
           status: 'PENDING',
           merchantRequestID: data.MerchantRequestID,
           checkoutRequestID: data.CheckoutRequestID
@@ -85,18 +116,19 @@ export const initiateStkPush = async (req: AuthenticatedRequest, res: Response):
       });
 
       res.status(200).json({
-        message: 'STK Push initiated successfully on user device.',
-        checkoutRequestId: data.CheckoutRequestID
+        message: 'STK Push initiated on user device.',
+        checkoutRequestId: data.CheckoutRequestID,
+        amount,
+        days: parsedDays
       });
     } else {
-      res.status(400).json({ error: data.ResponseDescription || 'STK Push deployment failed.' });
+      res.status(400).json({ error: data.ResponseDescription || 'STK Push failed.' });
     }
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Public Callback Endpoint: Safaricom posts transaction results here
 export const mpesaCallback = async (req: Request, res: Response): Promise<void> => {
   try {
     const { Body } = req.body;
@@ -108,52 +140,130 @@ export const mpesaCallback = async (req: Request, res: Response): Promise<void> 
 
     const { MerchantRequestID, CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata } = Body.stkCallback;
 
-    // Locate the matching record in our database
     const trackingPayment = await prisma.payment.findFirst({
       where: { merchantRequestID: MerchantRequestID, checkoutRequestID: CheckoutRequestID }
     });
 
     if (!trackingPayment) {
-      res.status(404).json({ error: 'Matching payment token reference not found.' });
+      res.status(404).json({ error: 'Payment record not found.' });
       return;
     }
 
     if (ResultCode === 0 && CallbackMetadata) {
-      // Locate the receipt number item inside the metadata array
       const items = CallbackMetadata.Item;
       const mpesaReceiptItem = items.find((i: any) => i.Name === 'MpesaReceiptNumber');
       const mpesaReceipt = mpesaReceiptItem ? mpesaReceiptItem.Value : `SYS_GEN_${Date.now()}`;
 
-      // Update payment status to COMPLETED
       await prisma.payment.update({
         where: { id: trackingPayment.id },
         data: { status: 'COMPLETED', mpesaReceipt }
       });
 
-      // Calculate the plan expiration date (e.g., 30 days from now)
-      const futureExpiry = new Date();
-      futureExpiry.setDate(futureExpiry.getDate() + 30);
+      // Calculate expiry using trading days (Mon–Fri only)
+      const now = new Date();
+      const currentUser = await prisma.user.findUnique({ where: { id: trackingPayment.userId } });
+      const baseDate = (currentUser?.subscriptionStatus && currentUser?.subscriptionExpiry && currentUser.subscriptionExpiry > now)
+        ? currentUser.subscriptionExpiry
+        : now;
 
-      // Instantly upgrade user access permissions
+      const newExpiry = addTradingDays(baseDate, trackingPayment.subscriptionDays);
+
       await prisma.user.update({
         where: { id: trackingPayment.userId },
+        data: { subscriptionStatus: true, subscriptionExpiry: newExpiry }
+      });
+
+      await prisma.auditLog.create({
         data: {
-          subscriptionStatus: true,
-          subscriptionExpiry: futureExpiry
+          userId: trackingPayment.userId,
+          action: 'SUBSCRIPTION_ACTIVATED',
+          details: `Receipt: ${mpesaReceipt}. Days: ${trackingPayment.subscriptionDays}. Expires: ${newExpiry.toISOString()}`
         }
       });
 
-      console.log(`[Payment Success] VIP active for User ID: ${trackingPayment.userId}. Receipt: ${mpesaReceipt}`);
+      console.log(`[Payment Success] Subscription activated for User: ${trackingPayment.userId}. Receipt: ${mpesaReceipt}. Expires: ${newExpiry.toISOString()}`);
     } else {
-      // Transaction failed or cancelled by user
       await prisma.payment.update({
         where: { id: trackingPayment.id },
         data: { status: `FAILED: ${ResultDesc}` }
       });
     }
 
-    // Safaricom expects an explicit HTTP 200 success acknowledgment code
-    res.status(200).json({ ResultCode: 0, ResultDesc: 'Callback received and processed successfully' });
+    res.status(200).json({ ResultCode: 0, ResultDesc: 'Callback processed successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const verifyPayment = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!IS_MPESA_CONFIGURED) {
+      res.status(503).json({ error: 'M-Pesa credentials are not configured.' });
+      return;
+    }
+
+    const { checkoutRequestId } = req.params;
+
+    const payment = await prisma.payment.findFirst({
+      where: { checkoutRequestID: checkoutRequestId, userId: req.user!.id }
+    });
+
+    if (!payment) {
+      res.status(404).json({ error: 'Payment not found.' });
+      return;
+    }
+
+    if (payment.status !== 'PENDING') {
+      res.status(200).json({ status: payment.status, payment });
+      return;
+    }
+
+    const token = await getDarajaToken();
+    const { timestamp, password } = buildTimestampAndPassword();
+
+    const response = await fetch(DARAJA_STK_QUERY_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        BusinessShortCode: ENV.MPESA.SHORTCODE,
+        Password: password,
+        Timestamp: timestamp,
+        CheckoutRequestID: checkoutRequestId
+      })
+    });
+
+    const data = await response.json() as any;
+
+    res.status(200).json({
+      checkoutRequestId,
+      resultCode: data.ResultCode,
+      resultDesc: data.ResultDesc,
+      localPaymentStatus: payment.status
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getPaymentHistory = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const payments = await prisma.payment.findMany({
+      where: { userId: req.user!.id },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        amount: true,
+        subscriptionDays: true,
+        phoneNumber: true,
+        mpesaReceipt: true,
+        status: true,
+        createdAt: true
+      }
+    });
+    res.status(200).json(payments);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
