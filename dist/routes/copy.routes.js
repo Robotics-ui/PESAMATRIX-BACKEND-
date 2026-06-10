@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const copy_controller_1 = require("../controllers/copy.controller");
+const auth_middleware_1 = require("../middlewares/auth.middleware");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticateJWT);
+router.post('/strategy', copy_controller_1.createStrategy);
+router.post('/subscribe', copy_controller_1.subscribeToStrategy);
+exports.default = router;
