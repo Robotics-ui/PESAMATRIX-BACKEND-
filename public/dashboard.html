@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PesaMatrix — Admin Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #22222f;
+      --border: #2d2d3d;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --accent: #7c3aed;
+      --accent2: #a855f7;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+    /* LAYOUT */
+    .layout { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 220px; flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 1.5rem 1rem;
+      position: fixed; top: 0; left: 0; bottom: 0;
+    }
+    .main { margin-left: 220px; flex: 1; padding: 2rem; }
+
+    /* SIDEBAR */
+    .sidebar-logo { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 2rem; padding: 0 0.5rem; }
+    .logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .logo-text { font-size: 1rem; font-weight: 700; }
+    .logo-sub { font-size: 0.7rem; color: var(--muted); }
+    .nav-item {
+      display: flex; align-items: center; gap: 0.65rem;
+      padding: 0.65rem 0.75rem; border-radius: 8px;
+      cursor: pointer; color: var(--muted); font-size: 0.9rem;
+      transition: all 0.15s; margin-bottom: 2px; border: none; background: none; width: 100%; text-align: left;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: rgba(124,58,237,0.15); color: var(--accent2); }
+    .nav-icon { font-size: 1.1rem; width: 20px; text-align: center; }
+    .sidebar-footer { margin-top: auto; }
+    .user-pill { background: var(--surface2); border-radius: 8px; padding: 0.65rem 0.75rem; font-size: 0.8rem; color: var(--muted); word-break: break-all; margin-bottom: 0.5rem; }
+    .user-pill strong { color: var(--text); display: block; margin-bottom: 2px; }
+    .btn-logout { width: 100%; background: none; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); padding: 0.5rem; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; }
+    .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+    /* HEADER */
+    .page-header { margin-bottom: 1.5rem; }
+    .page-header h1 { font-size: 1.5rem; font-weight: 700; }
+    .page-header p { color: var(--muted); font-size: 0.9rem; margin-top: 0.2rem; }
+
+    /* TABS (hidden, controlled by sidebar) */
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* STAT CARDS */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem; }
+    .stat-label { font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .stat-value { font-size: 1.8rem; font-weight: 700; }
+    .stat-sub { font-size: 0.78rem; color: var(--muted); margin-top: 0.2rem; }
+    .stat-card.green .stat-value { color: var(--green); }
+    .stat-card.purple .stat-value { color: var(--accent2); }
+    .stat-card.blue .stat-value { color: var(--blue); }
+    .stat-card.yellow .stat-value { color: var(--yellow); }
+
+    /* SECTION CARDS */
+    .section-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 1.5rem; overflow: hidden; }
+    .section-header { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .section-header h2 { font-size: 1rem; font-weight: 600; }
+    .section-body { padding: 1.25rem; }
+
+    /* TABLE */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    th { text-align: left; color: var(--muted); font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); }
+    td { padding: 0.75rem; border-bottom: 1px solid rgba(45,45,61,0.5); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* BADGES */
+    .badge { display: inline-flex; align-items: center; padding: 0.2rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+    .badge.green { background: rgba(34,197,94,0.12); color: var(--green); }
+    .badge.red { background: rgba(239,68,68,0.12); color: var(--red); }
+    .badge.yellow { background: rgba(245,158,11,0.12); color: var(--yellow); }
+    .badge.blue { background: rgba(59,130,246,0.12); color: var(--blue); }
+    .badge.purple { background: rgba(168,85,247,0.12); color: var(--accent2); }
+    .badge.gray { background: rgba(100,116,139,0.12); color: var(--muted); }
+
+    /* BUTTONS */
+    .btn { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.9rem; border-radius: 7px; font-size: 0.82rem; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.15s; }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-danger { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+    .btn-sm { padding: 0.3rem 0.65rem; font-size: 0.78rem; }
+
+    /* FORM */
+    .form-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+    .field { margin-bottom: 1rem; }
+    .field label { display: block; font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem; }
+    .field input, .field select { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 0.65rem 0.85rem; color: var(--text); font-size: 0.9rem; outline: none; }
+    .field input:focus, .field select:focus { border-color: var(--accent); }
+
+    /* ALERT */
+    .alert { border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.85rem; margin-bottom: 1rem; display: none; }
+    .alert.error { background: #2d1515; border: 1px solid #7f1d1d; color: #fca5a5; display: block; }
+    .alert.success { background: #0f2d1a; border: 1px solid #14532d; color: #86efac; display: block; }
+
+    /* MODAL */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 1rem; display: none; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; width: 100%; max-width: 440px; }
+    .modal h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.4rem; }
+    .modal p { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.2rem; }
+    .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1rem; }
+
+    /* PAGINATION */
+    .pagination { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; justify-content: flex-end; }
+    .page-info { color: var(--muted); font-size: 0.82rem; margin-right: auto; }
+
+    /* EMPTY */
+    .empty { text-align: center; color: var(--muted); padding: 3rem 1rem; font-size: 0.9rem; }
+
+    /* LOADING */
+    .loading { text-align: center; color: var(--muted); padding: 2rem; font-size: 0.9rem; }
+
+    /* SEARCH */
+    .search-bar { display: flex; gap: 0.75rem; margin-bottom: 1rem; align-items: center; }
+    .search-bar input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.9rem; color: var(--text); font-size: 0.875rem; outline: none; }
+    .search-bar input:focus { border-color: var(--accent); }
+
+    @media (max-width: 768px) {
+      .sidebar { width: 60px; padding: 1rem 0.5rem; }
+      .nav-item span:not(.nav-icon) { display: none; }
+      .logo-text, .logo-sub, .user-pill strong, .user-pill span { display: none; }
+      .sidebar-logo { justify-content: center; }
+      .main { margin-left: 60px; padding: 1rem; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">₿</div>
+      <div>
+        <div class="logo-text">PesaMatrix</div>
+        <div class="logo-sub">Admin Panel</div>
+      </div>
+    </div>
+
+    <nav>
+      <button class="nav-item active" onclick="switchTab('overview', this)">
+        <span class="nav-icon">📊</span><span>Overview</span>
+      </button>
+      <button class="nav-item" onclick="switchTab('users', this)">
+        <span class="nav-icon">👥</span><span>Users</span>
+      </button>
+      <button class="nav-item" onclick="switchTab('payments', this)">
+        <span class="nav-icon">💳</span><span>Payments</span>
+      </button>
+      <button class="nav-item" onclick="switchTab('settings', this)">
+        <span class="nav-icon">⚙️</span><span>Settings</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-pill">
+        <strong id="adminEmail">Admin</strong>
+        <span>Administrator</span>
+      </div>
+      <button class="btn-logout" onclick="logout()">Sign Out</button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- OVERVIEW TAB -->
+    <div class="tab-content active" id="tab-overview">
+      <div class="page-header">
+        <h1>Overview</h1>
+        <p>System summary and key metrics.</p>
+      </div>
+
+      <div class="stats-grid" id="statsGrid">
+        <div class="loading">Loading stats…</div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Recent Audit Logs</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Action</th><th>User</th><th>Details</th><th>Time</th></tr></thead>
+            <tbody id="auditBody"><tr><td colspan="4" class="loading">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- USERS TAB -->
+    <div class="tab-content" id="tab-users">
+      <div class="page-header">
+        <h1>Users</h1>
+        <p>Manage all registered users and their subscriptions.</p>
+      </div>
+
+      <div class="section-card">
+        <div class="section-header">
+          <h2>All Users</h2>
+          <button class="btn btn-primary btn-sm" onclick="loadUsers()">↺ Refresh</button>
+        </div>
+        <div class="section-body">
+          <div class="search-bar">
+            <input type="text" id="userSearch" placeholder="Filter by email…" oninput="filterUsers()" />
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Email</th><th>Status</th><th>Expiry</th><th>Days Left</th><th>Accounts</th><th>Actions</th></tr></thead>
+            <tbody id="usersBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="section-body" style="padding-top:0">
+          <div class="pagination">
+            <span class="page-info" id="userPageInfo"></span>
+            <button class="btn btn-ghost btn-sm" id="userPrevBtn" onclick="usersPage--; loadUsers()" disabled>← Prev</button>
+            <button class="btn btn-ghost btn-sm" id="userNextBtn" onclick="usersPage++; loadUsers()" disabled>Next →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAYMENTS TAB -->
+    <div class="tab-content" id="tab-payments">
+      <div class="page-header">
+        <h1>Payments</h1>
+        <p>All M-Pesa transactions on the platform.</p>
+      </div>
+
+      <div class="section-card">
+        <div class="section-header">
+          <h2>All Payments</h2>
+          <button class="btn btn-primary btn-sm" onclick="loadPayments()">↺ Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>User</th><th>Amount (KES)</th><th>Days</th><th>Status</th><th>Receipt</th><th>Date</th></tr></thead>
+            <tbody id="paymentsBody"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="section-body" style="padding-top:0">
+          <div class="pagination">
+            <span class="page-info" id="payPageInfo"></span>
+            <button class="btn btn-ghost btn-sm" id="payPrevBtn" onclick="paymentsPage--; loadPayments()" disabled>← Prev</button>
+            <button class="btn btn-ghost btn-sm" id="payNextBtn" onclick="paymentsPage++; loadPayments()" disabled>Next →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div class="tab-content" id="tab-settings">
+      <div class="page-header">
+        <h1>Settings</h1>
+        <p>Configure subscription pricing and limits.</p>
+      </div>
+
+      <div class="section-card">
+        <div class="section-header"><h2>Subscription Settings</h2></div>
+        <div class="section-body">
+          <div class="alert" id="settingsAlert"></div>
+          <div class="form-row">
+            <div class="field">
+              <label>Fee Per Day (KES)</label>
+              <input type="number" id="feePerDay" placeholder="e.g. 100" min="1" />
+            </div>
+            <div class="field">
+              <label>Minimum Days</label>
+              <input type="number" id="minDays" placeholder="e.g. 1" min="1" />
+            </div>
+            <div class="field">
+              <label>Maximum Days</label>
+              <input type="number" id="maxDays" placeholder="e.g. 30" min="1" />
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-header"><h2>Reset User Password</h2></div>
+        <div class="section-body">
+          <div class="alert" id="resetAlert"></div>
+          <div class="form-row">
+            <div class="field">
+              <label>User Email</label>
+              <input type="email" id="resetEmail" placeholder="user@example.com" />
+            </div>
+            <div class="field">
+              <label>New Password <span style="color:var(--muted);font-weight:400">(optional — leave blank to auto-generate)</span></label>
+              <input type="password" id="resetNewPw" placeholder="Min 8 characters" />
+            </div>
+          </div>
+          <button class="btn btn-danger" onclick="resetPassword()">Reset Password</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- SUBSCRIPTION MODAL -->
+<div class="modal-overlay" id="subModal">
+  <div class="modal">
+    <h3>Adjust Subscription</h3>
+    <p id="subModalEmail">Update subscription for this user.</p>
+    <div class="alert" id="subAlert"></div>
+    <div class="field">
+      <label>Status</label>
+      <select id="subStatus">
+        <option value="true">Active</option>
+        <option value="false">Inactive</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Expiry Date</label>
+      <input type="datetime-local" id="subExpiry" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeSubModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSubscription()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const token = localStorage.getItem('pm_token');
+  const user = JSON.parse(localStorage.getItem('pm_user') || '{}');
+
+  if (!token || !user.isAdmin) {
+    window.location.href = '/';
+  }
+
+  document.getElementById('adminEmail').textContent = user.email || 'Admin';
+
+  let usersPage = 1;
+  let paymentsPage = 1;
+  let allUsers = [];
+  let currentSubUserId = null;
+
+  async function api(path, options = {}) {
+    const res = await fetch(path, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...(options.headers || {}) }
+    });
+    if (res.status === 401 || res.status === 403) { logout(); }
+    return res.json();
+  }
+
+  function logout() {
+    localStorage.removeItem('pm_token');
+    localStorage.removeItem('pm_user');
+    window.location.href = '/';
+  }
+
+  function switchTab(name, el) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    el.classList.add('active');
+    if (name === 'overview') loadOverview();
+    if (name === 'users') loadUsers();
+    if (name === 'payments') loadPayments();
+    if (name === 'settings') loadSettings();
+  }
+
+  function fmt(dt) {
+    if (!dt) return '—';
+    return new Date(dt).toLocaleDateString('en-KE', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+  function fmtTime(dt) {
+    if (!dt) return '—';
+    return new Date(dt).toLocaleString('en-KE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  // ── OVERVIEW ──────────────────────────────────────────────
+  async function loadOverview() {
+    const data = await api('/api/admin/analytics');
+
+    const g = document.getElementById('statsGrid');
+    g.innerHTML = `
+      <div class="stat-card purple"><div class="stat-label">Total Users</div><div class="stat-value">${data.users.total}</div><div class="stat-sub">${data.users.activeSubscribers} active subscribers</div></div>
+      <div class="stat-card green"><div class="stat-label">Revenue (KES)</div><div class="stat-value">${(data.revenue.total).toLocaleString()}</div><div class="stat-sub">${data.revenue.completedPayments} completed payments</div></div>
+      <div class="stat-card blue"><div class="stat-label">Trading Accounts</div><div class="stat-value">${data.trading.totalAccounts}</div><div class="stat-sub">${data.trading.masterAccounts} master · ${data.trading.subscriberAccounts} subscriber</div></div>
+      <div class="stat-card yellow"><div class="stat-label">Replications</div><div class="stat-value">${data.replication.total}</div><div class="stat-sub">${data.replication.successful} success · ${data.replication.failed} failed</div></div>
+      <div class="stat-card"><div class="stat-label">Active Subscriptions</div><div class="stat-value">${data.trading.activeSubscriptions}</div><div class="stat-sub">Copy strategies running</div></div>
+      <div class="stat-card"><div class="stat-label">Expired Subscribers</div><div class="stat-value">${data.users.expiredSubscribers}</div><div class="stat-sub">Need renewal</div></div>
+    `;
+
+    const logs = data.recentAuditLogs || [];
+    document.getElementById('auditBody').innerHTML = logs.length ? logs.map(l => `
+      <tr>
+        <td><span class="badge blue">${l.action}</span></td>
+        <td style="color:var(--muted);font-size:0.8rem">${l.userId.slice(0,8)}…</td>
+        <td style="color:var(--muted);font-size:0.8rem">${l.details || '—'}</td>
+        <td style="color:var(--muted);font-size:0.8rem">${fmtTime(l.createdAt)}</td>
+      </tr>`).join('') : '<tr><td colspan="4" class="empty">No audit logs yet.</td></tr>';
+  }
+
+  // ── USERS ─────────────────────────────────────────────────
+  async function loadUsers() {
+    document.getElementById('usersBody').innerHTML = '<tr><td colspan="6" class="loading">Loading…</td></tr>';
+    const data = await api(`/api/admin/users?page=${usersPage}&limit=20`);
+    allUsers = data.users || [];
+    renderUsers(allUsers);
+
+    const total = data.total || 0;
+    const pages = Math.ceil(total / 20);
+    document.getElementById('userPageInfo').textContent = `Page ${usersPage} of ${pages} · ${total} users`;
+    document.getElementById('userPrevBtn').disabled = usersPage <= 1;
+    document.getElementById('userNextBtn').disabled = usersPage >= pages;
+  }
+
+  function renderUsers(users) {
+    const body = document.getElementById('usersBody');
+    if (!users.length) { body.innerHTML = '<tr><td colspan="6" class="empty">No users found.</td></tr>'; return; }
+    body.innerHTML = users.map(u => {
+      const active = u.subscriptionStatus && u.subscriptionExpiry && new Date(u.subscriptionExpiry) > new Date();
+      const badge = active ? '<span class="badge green">Active</span>' : (u.subscriptionStatus ? '<span class="badge yellow">Expired</span>' : '<span class="badge gray">None</span>');
+      const adminBadge = u.isAdmin ? '<span class="badge purple" style="margin-left:4px">Admin</span>' : '';
+      const days = u.remainingTradingDays > 0 ? `<span class="badge green">${u.remainingTradingDays}d</span>` : '<span class="badge gray">0d</span>';
+      return `<tr>
+        <td>${u.email}${adminBadge}</td>
+        <td>${badge}</td>
+        <td style="color:var(--muted);font-size:0.82rem">${fmt(u.subscriptionExpiry)}</td>
+        <td>${days}</td>
+        <td style="color:var(--muted)">${u._count?.tradingAccounts ?? 0}</td>
+        <td><button class="btn btn-ghost btn-sm" onclick="openSubModal('${u.id}','${u.email}','${u.subscriptionStatus}','${u.subscriptionExpiry||''}')">Edit Sub</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function filterUsers() {
+    const q = document.getElementById('userSearch').value.toLowerCase();
+    renderUsers(allUsers.filter(u => u.email.toLowerCase().includes(q)));
+  }
+
+  // ── SUBSCRIPTION MODAL ────────────────────────────────────
+  function openSubModal(id, email, status, expiry) {
+    currentSubUserId = id;
+    document.getElementById('subModalEmail').textContent = `Adjusting subscription for: ${email}`;
+    document.getElementById('subStatus').value = status === 'true' ? 'true' : 'false';
+    if (expiry && expiry !== 'null' && expiry !== 'undefined') {
+      const d = new Date(expiry);
+      document.getElementById('subExpiry').value = d.toISOString().slice(0, 16);
+    } else {
+      document.getElementById('subExpiry').value = '';
+    }
+    document.getElementById('subAlert').className = 'alert';
+    document.getElementById('subModal').classList.add('open');
+  }
+
+  function closeSubModal() {
+    document.getElementById('subModal').classList.remove('open');
+    currentSubUserId = null;
+  }
+
+  async function saveSubscription() {
+    const alertEl = document.getElementById('subAlert');
+    alertEl.className = 'alert';
+    const status = document.getElementById('subStatus').value === 'true';
+    const expiry = document.getElementById('subExpiry').value;
+
+    const data = await api(`/api/admin/users/${currentSubUserId}/subscription`, {
+      method: 'PATCH',
+      body: JSON.stringify({ subscriptionStatus: status, subscriptionExpiry: expiry || undefined })
+    });
+
+    if (data.error) { alertEl.className = 'alert error'; alertEl.textContent = data.error; return; }
+    closeSubModal();
+    loadUsers();
+  }
+
+  // ── PAYMENTS ──────────────────────────────────────────────
+  async function loadPayments() {
+    document.getElementById('paymentsBody').innerHTML = '<tr><td colspan="6" class="loading">Loading…</td></tr>';
+    const data = await api(`/api/admin/payments?page=${paymentsPage}&limit=20`);
+    const payments = data.payments || [];
+
+    if (!payments.length) {
+      document.getElementById('paymentsBody').innerHTML = '<tr><td colspan="6" class="empty">No payments yet.</td></tr>';
+    } else {
+      document.getElementById('paymentsBody').innerHTML = payments.map(p => {
+        const statusMap = { COMPLETED: 'green', PENDING: 'yellow', FAILED: 'red' };
+        const badge = `<span class="badge ${statusMap[p.status] || 'gray'}">${p.status}</span>`;
+        return `<tr>
+          <td style="font-size:0.82rem">${p.user?.email || '—'}</td>
+          <td><strong>${p.amount.toLocaleString()}</strong></td>
+          <td>${p.subscriptionDays}d</td>
+          <td>${badge}</td>
+          <td style="color:var(--muted);font-size:0.78rem">${p.mpesaReceipt || '—'}</td>
+          <td style="color:var(--muted);font-size:0.78rem">${fmtTime(p.createdAt)}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    const total = data.total || 0;
+    const pages = Math.ceil(total / 20);
+    document.getElementById('payPageInfo').textContent = `Page ${paymentsPage} of ${pages} · ${total} payments`;
+    document.getElementById('payPrevBtn').disabled = paymentsPage <= 1;
+    document.getElementById('payNextBtn').disabled = paymentsPage >= pages;
+  }
+
+  // ── SETTINGS ──────────────────────────────────────────────
+  async function loadSettings() {
+    const data = await api('/api/admin/settings');
+    if (data.feePerDay !== undefined) {
+      document.getElementById('feePerDay').value = data.feePerDay;
+      document.getElementById('minDays').value = data.minDays;
+      document.getElementById('maxDays').value = data.maxDays;
+    }
+  }
+
+  async function saveSettings() {
+    const alertEl = document.getElementById('settingsAlert');
+    alertEl.className = 'alert';
+    const data = await api('/api/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify({
+        feePerDay: parseFloat(document.getElementById('feePerDay').value),
+        minDays: parseInt(document.getElementById('minDays').value),
+        maxDays: parseInt(document.getElementById('maxDays').value)
+      })
+    });
+    if (data.error) { alertEl.className = 'alert error'; alertEl.textContent = data.error; }
+    else { alertEl.className = 'alert success'; alertEl.textContent = 'Settings saved successfully.'; }
+  }
+
+  async function resetPassword() {
+    const alertEl = document.getElementById('resetAlert');
+    alertEl.className = 'alert';
+    const email = document.getElementById('resetEmail').value;
+    const newPassword = document.getElementById('resetNewPw').value;
+    if (!email) { alertEl.className = 'alert error'; alertEl.textContent = 'Email is required.'; return; }
+
+    const data = await api('/api/auth/admin/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, newPassword: newPassword || undefined })
+    });
+
+    if (data.error) { alertEl.className = 'alert error'; alertEl.textContent = data.error; }
+    else {
+      alertEl.className = 'alert success';
+      alertEl.textContent = `Password reset. Temporary password: ${data.temporaryPassword}`;
+      document.getElementById('resetEmail').value = '';
+      document.getElementById('resetNewPw').value = '';
+    }
+  }
+
+  // Initial load
+  loadOverview();
+</script>
+</body>
+</html>
