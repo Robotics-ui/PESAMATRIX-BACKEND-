@@ -12,7 +12,7 @@ export const ENV = {
   DATABASE_URL: process.env.DATABASE_URL!,
   UPSTASH_REDIS_URL: process.env.UPSTASH_REDIS_URL!,
   METAAPI_TOKEN: process.env.METAAPI_TOKEN!,
-  JWT_SECRET: process.env.JWT_SECRET!,
+  JWT_SECRET: process.env.JWT_SECRET || 'dev-fallback-secret-change-in-production',
   MPESA_CALLBACK_URL: process.env.MPESA_CALLBACK_URL || `https://${process.env.REPLIT_DEV_DOMAIN}/api/payments/mpesa-callback`,
   MPESA: {
     CONSUMER_KEY: process.env.MPESA_CONSUMER_KEY!,
