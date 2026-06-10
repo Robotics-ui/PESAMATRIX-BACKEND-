@@ -98,6 +98,42 @@ export const changePassword = async (req: AuthenticatedRequest, res: Response): 
   }
 };
 
+export const resetAdminPassword = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email) {
+      res.status(400).json({ error: 'Email is required.' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+
+    const password = newPassword && newPassword.length >= 8
+      ? newPassword
+      : crypto.randomBytes(12).toString('hex');
+
+    await prisma.user.update({
+      where: { email },
+      data: {
+        passwordHash: hashPassword(password),
+        forcePasswordChange: true
+      }
+    });
+
+    res.status(200).json({
+      message: `Password reset for ${email}. User must change it on next login.`,
+      temporaryPassword: password
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const getProfile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const user = await prisma.user.findUnique({
