@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { ENV, IS_REDIS_CONFIGURED } from './config/env';
 
 import { metaApiWorker } from './queue/metaapi.queue';
@@ -12,6 +13,16 @@ import paymentRoutes from './routes/payment.routes';
 import analyticsRoutes from './routes/analytics.routes';
 
 const app = express();
+
+const corsOptions: cors.CorsOptions = {
+  origin: ['https://pesamatrix-signal-fx-f--signalfx.replit.app'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 app.use(express.json());
 
