@@ -1,5 +1,11 @@
 import dotenv from 'dotenv';
-dotenv.config();
+
+// On Replit, all secrets are injected directly into process.env before startup.
+// Only load .env file in local (non-Replit) environments to avoid overriding
+// Replit's real DATABASE_URL and other secrets with stale local values.
+if (!process.env.REPL_ID) {
+  dotenv.config();
+}
 
 export const ENV = {
   PORT: process.env.PORT || 5000,
