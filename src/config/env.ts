@@ -13,7 +13,11 @@ export const ENV = {
   UPSTASH_REDIS_URL: process.env.UPSTASH_REDIS_URL!,
   METAAPI_TOKEN: process.env.METAAPI_TOKEN!,
   JWT_SECRET: process.env.JWT_SECRET || 'dev-fallback-secret-change-in-production',
-  MPESA_CALLBACK_URL: process.env.MPESA_CALLBACK_URL || `https://${process.env.REPLIT_DEV_DOMAIN}/api/payments/mpesa-callback`,
+  MPESA_WEBHOOK_SECRET: process.env.MPESA_WEBHOOK_SECRET || '',
+  MPESA_CALLBACK_URL: process.env.MPESA_CALLBACK_URL ||
+    (process.env.MPESA_WEBHOOK_SECRET
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}/api/payments/mpesa-callback?token=${process.env.MPESA_WEBHOOK_SECRET}`
+      : `https://${process.env.REPLIT_DEV_DOMAIN}/api/payments/mpesa-callback`),
   MPESA: {
     CONSUMER_KEY: process.env.MPESA_CONSUMER_KEY!,
     CONSUMER_SECRET: process.env.MPESA_CONSUMER_SECRET!,
