@@ -1,5 +1,5 @@
 import express from 'express';
-import { ENV } from './config/env';
+import { ENV, IS_REDIS_CONFIGURED } from './config/env';
 
 import { metaApiWorker } from './queue/metaapi.queue';
 import { enforcementWorker } from './queue/enforcement.worker';
@@ -13,87 +13,68 @@ import analyticsRoutes from './routes/analytics.routes';
 
 const app = express();
 
-// Middleware
 app.use(express.json());
 
-// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/copy', copyRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
-// Health Check Endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'HEALTHY',
     timestamp: new Date().toISOString(),
     service: 'PesaMatrix Cloud Engine',
     architecture: 'MetaApi CopyFactory Cloud-to-Cloud',
+    redisConfigured: IS_REDIS_CONFIGURED,
     modules: {
       authentication: 'ACTIVE',
       accounts: 'ACTIVE',
       copyTrading: 'ACTIVE',
       payments: 'ACTIVE',
       analytics: 'ACTIVE',
-      enforcement: 'ACTIVE',
-      scheduling: 'ACTIVE'
+      enforcement: IS_REDIS_CONFIGURED ? 'ACTIVE' : 'AWAITING_CONFIG',
+      scheduling: IS_REDIS_CONFIGURED ? 'ACTIVE' : 'AWAITING_CONFIG'
     }
   });
 });
 
-// MetaApi Queue Monitoring
-metaApiWorker.on('completed', (job) => {
-  console.log(
-    `[MetaApi Queue] Task completed successfully. Job ID: ${job.id}`
-  );
-});
+if (IS_REDIS_CONFIGURED && metaApiWorker) {
+  metaApiWorker.on('completed', (job: any) => {
+    console.log(`[MetaApi Queue] Task completed. Job ID: ${job.id}`);
+  });
+  metaApiWorker.on('failed', (job: any, err: any) => {
+    console.error(`[MetaApi Queue Failure] Job ID ${job?.id} failed: ${err.message}`);
+  });
+}
 
-metaApiWorker.on('failed', (job, err) => {
-  console.error(
-    `[MetaApi Queue Failure] Job ID ${job?.id} failed: ${err.message}`
-  );
-});
+if (IS_REDIS_CONFIGURED && enforcementWorker) {
+  enforcementWorker.on('completed', (job: any) => {
+    console.log(`[Enforcement Queue] Sweep completed. Job ID: ${job.id}`);
+  });
+  enforcementWorker.on('failed', (job: any, err: any) => {
+    console.error(`[Enforcement Queue Failure] Job ID ${job?.id} failed: ${err.message}`);
+  });
+}
 
-// Enforcement Queue Monitoring
-enforcementWorker.on('completed', (job) => {
-  console.log(
-    `[Enforcement Queue] Verification sweep completed. Job ID: ${job.id}`
-  );
-});
-
-enforcementWorker.on('failed', (job, err) => {
-  console.error(
-    `[Enforcement Queue Failure] Job ID ${job?.id} failed: ${err.message}`
-  );
-});
-
-// Server Startup
 app.listen(Number(ENV.PORT), '0.0.0.0', async () => {
   console.log(`
 =============================================================
-🚀 PESAMATRIX CLOUD ENGINE STARTED
-📡 Port: ${ENV.PORT}
-🔒 Architecture: MetaApi CopyFactory Cloud-to-Cloud
-💾 Database: PostgreSQL + Prisma ORM
-⚡ Queue Engine: Upstash Redis + BullMQ
-🔐 Authentication Module: Active
-🏦 Account Management Module: Active
-📈 Copy Trading Module: Active
-💳 Payments Module: Active
-📊 Analytics Module: Active
-🛡️ Enforcement Engine: Active
-⏰ Cron Scheduler: Initializing
+  PESAMATRIX CLOUD ENGINE STARTED
+  Port: ${ENV.PORT}
+  Architecture: MetaApi CopyFactory Cloud-to-Cloud
+  Database: PostgreSQL + Prisma ORM
+  Queue Engine: ${IS_REDIS_CONFIGURED ? 'Upstash Redis + BullMQ (ACTIVE)' : 'Redis NOT configured (add UPSTASH_REDIS_URL)'}
 =============================================================
 `);
 
-  try {
-    await initializeCronJobs();
-    console.log('✅ Background cron schedules initialized successfully');
-  } catch (error) {
-    console.error(
-      '❌ Failed initializing background cron schedules:',
-      error
-    );
+  if (IS_REDIS_CONFIGURED) {
+    try {
+      await initializeCronJobs();
+      console.log('[Cron] Background cron schedules initialized successfully');
+    } catch (error) {
+      console.error('[Cron] Failed initializing background cron schedules:', error);
+    }
   }
 });

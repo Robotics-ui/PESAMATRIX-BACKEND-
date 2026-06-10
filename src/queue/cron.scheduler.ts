@@ -1,26 +1,25 @@
 import { Queue } from 'bullmq';
 import { queueConnectionOptions } from './connection';
+import { IS_REDIS_CONFIGURED } from '../config/env';
 
-export const cronQueue = new Queue('CronSchedulerTasks', queueConnectionOptions);
+const cronQueue = IS_REDIS_CONFIGURED ? new Queue('CronSchedulerTasks', queueConnectionOptions) : null;
 
 export const initializeCronJobs = async () => {
-  // Remove preexisting instances of this cron pattern to avoid duplication on server restarts
+  if (!IS_REDIS_CONFIGURED || !cronQueue) {
+    console.warn('[Cron Engine] Redis not configured — skipping cron job setup.');
+    return;
+  }
+
   const activeRepeatableJobs = await cronQueue.getRepeatableJobs();
   for (const job of activeRepeatableJobs) {
     await cronQueue.removeRepeatableByKey(job.key);
   }
 
-  // Add the recurring sweep event using standard crontab execution patterns
-  // '0 * * * *' = Triggers the process cleanly once every single hour
   await cronQueue.add(
     'SWEEP_EXPIRED_SUBSCRIPTIONS',
     {},
-    {
-      repeat: {
-        pattern: '0 * * * *'
-      }
-    }
+    { repeat: { pattern: '0 * * * *' } }
   );
 
-  console.log('⏰ [Cron Engine] Repeatable hourly expiration sweep registered in Redis grid.');
+  console.log('[Cron Engine] Repeatable hourly expiration sweep registered.');
 };

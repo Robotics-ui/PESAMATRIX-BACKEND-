@@ -15,7 +15,19 @@ export const ENV = {
   }
 };
 
-// Validate that crucial strings are loaded
-if (!ENV.DATABASE_URL || !ENV.UPSTASH_REDIS_URL || !ENV.METAAPI_TOKEN) {
-  throw new Error('Missing critical environment configuration keys.');
+// Warn about missing or placeholder credentials — server still starts
+const placeholders = ['your_endpoint.upstash.io', 'your_metaapi', 'your_ultra', 'your_daraja', 'your_token'];
+const isPlaceholder = (val?: string) => !val || placeholders.some(p => val.includes(p));
+
+if (isPlaceholder(ENV.UPSTASH_REDIS_URL)) {
+  console.warn('[Config] UPSTASH_REDIS_URL not configured — queue workers will be disabled.');
 }
+if (isPlaceholder(ENV.METAAPI_TOKEN)) {
+  console.warn('[Config] METAAPI_TOKEN not configured — MetaApi features will be disabled.');
+}
+if (isPlaceholder(ENV.JWT_SECRET)) {
+  console.warn('[Config] JWT_SECRET not configured — authentication will not work.');
+}
+
+export const IS_REDIS_CONFIGURED = !isPlaceholder(ENV.UPSTASH_REDIS_URL);
+export const IS_METAAPI_CONFIGURED = !isPlaceholder(ENV.METAAPI_TOKEN);

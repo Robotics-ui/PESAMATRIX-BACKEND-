@@ -1,34 +1,28 @@
 import { Worker, Job } from 'bullmq';
 import { queueConnectionOptions } from './connection';
 import { PrismaClient } from '@prisma/client';
-import CopyFactory from 'metaapi.cloud-copyfactory-sdk';
-import { ENV } from '../config/env';
+import { ENV, IS_REDIS_CONFIGURED, IS_METAAPI_CONFIGURED } from '../config/env';
 
 const prisma = new PrismaClient();
-const copyFactory = new CopyFactory(ENV.METAAPI_TOKEN);
 
-export const enforcementWorker = new Worker(
+const getCopyFactory = () => {
+  if (!IS_METAAPI_CONFIGURED) throw new Error('METAAPI_TOKEN not configured');
+  const CopyFactory = require('metaapi.cloud-copyfactory-sdk').default;
+  return new CopyFactory(ENV.METAAPI_TOKEN);
+};
+
+const createWorker = () => new Worker(
   'EnforcementTasks',
   async (job: Job) => {
     if (job.name === 'SWEEP_EXPIRED_SUBSCRIPTIONS') {
       console.log('[Cron Worker] Initiating system-wide subscription expiry sweep...');
 
       const now = new Date();
-
       const expiredUsers = await prisma.user.findMany({
-        where: {
-          subscriptionStatus: true,
-          subscriptionExpiry: {
-            lt: now
-          }
-        },
+        where: { subscriptionStatus: true, subscriptionExpiry: { lt: now } },
         include: {
           tradingAccounts: {
-            include: {
-              subscriptions: {
-                where: { isActive: true }
-              }
-            }
+            include: { subscriptions: { where: { isActive: true } } }
           }
         }
       });
@@ -38,7 +32,7 @@ export const enforcementWorker = new Worker(
         return;
       }
 
-      const configApi = copyFactory.configurationApi;
+      const configApi = getCopyFactory().configurationApi;
 
       for (const user of expiredUsers) {
         console.log(`[Expiry Triggered] Revoking access for User ID: ${user.id}`);
@@ -47,15 +41,13 @@ export const enforcementWorker = new Worker(
           for (const sub of account.subscriptions) {
             try {
               await configApi.removeSubscriber(sub.metaApiSubscriberId);
-
               await prisma.strategySubscription.update({
                 where: { id: sub.id },
                 data: { isActive: false }
               });
-
-              console.log(`[MetaApi Sync] Removed subscriber endpoint connection token: ${sub.metaApiSubscriberId}`);
+              console.log(`[MetaApi Sync] Removed subscriber: ${sub.metaApiSubscriberId}`);
             } catch (error: any) {
-              console.error(`[MetaApi Error] Failed to revoke token connection ${sub.metaApiSubscriberId}: ${error.message}`);
+              console.error(`[MetaApi Error] Failed to revoke ${sub.metaApiSubscriberId}: ${error.message}`);
             }
           }
 
@@ -70,9 +62,11 @@ export const enforcementWorker = new Worker(
           data: { subscriptionStatus: false }
         });
 
-        console.log(`[Status Complete] User access level restricted for ID: ${user.id}`);
+        console.log(`[Status Complete] Access restricted for User ID: ${user.id}`);
       }
     }
   },
   { ...queueConnectionOptions, concurrency: 1 }
 );
+
+export const enforcementWorker = IS_REDIS_CONFIGURED ? createWorker() : null as any;

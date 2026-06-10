@@ -1,43 +1,48 @@
 import { Queue, Worker, Job } from 'bullmq';
 import { queueConnectionOptions } from './connection';
-import MetaApi from 'metaapi.cloud-sdk';
-import CopyFactory from 'metaapi.cloud-copyfactory-sdk';
-import { ENV } from '../config/env';
+import { ENV, IS_REDIS_CONFIGURED, IS_METAAPI_CONFIGURED } from '../config/env';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const metaApi = new MetaApi(ENV.METAAPI_TOKEN);
-const copyFactory = new CopyFactory(ENV.METAAPI_TOKEN);
 
-export const metaApiQueue = new Queue('MetaApiTasks', queueConnectionOptions);
+const getMetaApi = () => {
+  if (!IS_METAAPI_CONFIGURED) throw new Error('METAAPI_TOKEN not configured');
+  const MetaApi = require('metaapi.cloud-sdk').default;
+  return new MetaApi(ENV.METAAPI_TOKEN);
+};
 
-export const metaApiWorker = new Worker(
+const getCopyFactory = () => {
+  if (!IS_METAAPI_CONFIGURED) throw new Error('METAAPI_TOKEN not configured');
+  const CopyFactory = require('metaapi.cloud-copyfactory-sdk').default;
+  return new CopyFactory(ENV.METAAPI_TOKEN);
+};
+
+const createQueue = () => new Queue('MetaApiTasks', queueConnectionOptions);
+const createWorker = () => new Worker(
   'MetaApiTasks',
   async (job: Job) => {
     const { type, payload } = job.data;
+    const metaApi = getMetaApi();
+    const copyFactory = getCopyFactory();
 
     switch (type) {
       case 'PROVISION_TERMINAL': {
         const { accountId, login, password, server } = payload;
-
         try {
           const account = await metaApi.metatraderAccountApi.createAccount({
             name: `PesaMatrix_${login}`,
             type: 'cloud-g2',
             platform: 'mt5',
-            login: login,
-            password: password,
-            server: server,
+            login,
+            password,
+            server,
             magic: 10001,
             quoteStreamingIntervalInSeconds: 2.5
           });
 
           await prisma.tradingAccount.update({
             where: { id: accountId },
-            data: {
-              metaApiAccountId: account.id,
-              connectionStatus: 'CONNECTED'
-            }
+            data: { metaApiAccountId: account.id, connectionStatus: 'CONNECTED' }
           });
 
           await account.deploy();
@@ -59,7 +64,7 @@ export const metaApiWorker = new Worker(
           const { id: newStrategyId } = await configApi.generateStrategyId();
 
           await configApi.updateStrategy(newStrategyId, {
-            name: name,
+            name,
             description: `PesaMatrix copy trading strategy for ${name}`,
             accountId: masterMetaApiId,
           });
@@ -81,20 +86,12 @@ export const metaApiWorker = new Worker(
 
           await configApi.updateSubscriber(subscriberMetaApiId, {
             name: `PesaMatrix_subscriber_${subscriberMetaApiId}`,
-            subscriptions: [
-              {
-                strategyId: strategyMetaApiId,
-                multiplier: riskMultiplier
-              }
-            ]
+            subscriptions: [{ strategyId: strategyMetaApiId, multiplier: riskMultiplier }]
           });
 
           await prisma.strategySubscription.update({
             where: { id: subscriptionId },
-            data: {
-              metaApiSubscriberId: subscriberMetaApiId,
-              isActive: true
-            }
+            data: { metaApiSubscriberId: subscriberMetaApiId, isActive: true }
           });
         } catch (error: any) {
           throw new Error(`Failed linking subscriber to network strategy: ${error.message}`);
@@ -105,3 +102,6 @@ export const metaApiWorker = new Worker(
   },
   { ...queueConnectionOptions, concurrency: 5 }
 );
+
+export const metaApiQueue = IS_REDIS_CONFIGURED ? createQueue() : null as any;
+export const metaApiWorker = IS_REDIS_CONFIGURED ? createWorker() : null as any;
