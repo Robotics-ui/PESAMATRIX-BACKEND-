@@ -69,7 +69,7 @@ enforcementWorker.on('failed', (job, err) => {
 });
 
 // Server Startup
-app.listen(ENV.PORT, async () => {
+app.listen(Number(ENV.PORT), '0.0.0.0', async () => {
   console.log(`
 =============================================================
 🚀 PESAMATRIX CLOUD ENGINE STARTED

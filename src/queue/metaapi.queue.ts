@@ -1,11 +1,13 @@
 import { Queue, Worker, Job } from 'bullmq';
 import { queueConnectionOptions } from './connection';
 import MetaApi from 'metaapi.cloud-sdk';
+import CopyFactory from 'metaapi.cloud-copyfactory-sdk';
 import { ENV } from '../config/env';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const metaApi = new MetaApi(ENV.METAAPI_TOKEN);
+const copyFactory = new CopyFactory(ENV.METAAPI_TOKEN);
 
 export const metaApiQueue = new Queue('MetaApiTasks', queueConnectionOptions);
 
@@ -17,30 +19,27 @@ export const metaApiWorker = new Worker(
     switch (type) {
       case 'PROVISION_TERMINAL': {
         const { accountId, login, password, server } = payload;
-        
+
         try {
-          // 1. Instruct MetaApi to provision a pure cloud infrastructure terminal
-          const account = await metaApi.metatraderAccountApi.createMetatraderAccount({
+          const account = await metaApi.metatraderAccountApi.createAccount({
             name: `PesaMatrix_${login}`,
-            type: 'cloud',
+            type: 'cloud-g2',
             platform: 'mt5',
             login: login,
             password: password,
             server: server,
-            magic: 10001, // System tracking separation identifier
+            magic: 10001,
             quoteStreamingIntervalInSeconds: 2.5
           });
 
-          // 2. Synchronize database status
           await prisma.tradingAccount.update({
             where: { id: accountId },
-            data: { 
+            data: {
               metaApiAccountId: account.id,
-              connectionStatus: 'CONNECTED' 
+              connectionStatus: 'CONNECTED'
             }
           });
 
-          // 3. Immediately instruct MetaApi to deploy the cloud runner
           await account.deploy();
           await account.waitConnected();
         } catch (error: any) {
@@ -56,18 +55,18 @@ export const metaApiWorker = new Worker(
       case 'CREATE_COPY_STRATEGY': {
         const { strategyId, masterMetaApiId, name } = payload;
         try {
-          const copyFactory = metaApi.copyFactoryApi;
-          
-          // Register strategy natively in the cloud execution layer
-          const strategy = await copyFactory.createStrategy({
+          const configApi = copyFactory.configurationApi;
+          const { id: newStrategyId } = await configApi.generateStrategyId();
+
+          await configApi.updateStrategy(newStrategyId, {
             name: name,
+            description: `PesaMatrix copy trading strategy for ${name}`,
             accountId: masterMetaApiId,
-            stopOutBalance: 100, // Safety protection margin
           });
 
           await prisma.copyStrategy.update({
             where: { id: strategyId },
-            data: { metaApiStrategyId: strategy.id }
+            data: { metaApiStrategyId: newStrategyId }
           });
         } catch (error: any) {
           throw new Error(`Failed to initialize strategy inside CopyFactory: ${error.message}`);
@@ -78,24 +77,23 @@ export const metaApiWorker = new Worker(
       case 'SUBSCRIBE_ACCOUNT': {
         const { subscriptionId, strategyMetaApiId, subscriberMetaApiId, riskMultiplier } = payload;
         try {
-          const copyFactory = metaApi.copyFactoryApi;
+          const configApi = copyFactory.configurationApi;
 
-          // Wire Subscriber Cloud Terminal to CopyFactory Strategy Engine
-          const subscriber = await copyFactory.createSubscriber({
-            accountId: subscriberMetaApiId,
-            strategies: [
+          await configApi.updateSubscriber(subscriberMetaApiId, {
+            name: `PesaMatrix_subscriber_${subscriberMetaApiId}`,
+            subscriptions: [
               {
-                id: strategyMetaApiId,
-                ratio: riskMultiplier
+                strategyId: strategyMetaApiId,
+                multiplier: riskMultiplier
               }
             ]
           });
 
           await prisma.strategySubscription.update({
             where: { id: subscriptionId },
-            data: { 
-              metaApiSubscriberId: subscriber.id,
-              isActive: true 
+            data: {
+              metaApiSubscriberId: subscriberMetaApiId,
+              isActive: true
             }
           });
         } catch (error: any) {

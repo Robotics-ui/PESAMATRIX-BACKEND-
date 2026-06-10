@@ -1,11 +1,11 @@
 import { Worker, Job } from 'bullmq';
 import { queueConnectionOptions } from './connection';
 import { PrismaClient } from '@prisma/client';
-import MetaApi from 'metaapi.cloud-sdk';
+import CopyFactory from 'metaapi.cloud-copyfactory-sdk';
 import { ENV } from '../config/env';
 
 const prisma = new PrismaClient();
-const metaApi = new MetaApi(ENV.METAAPI_TOKEN);
+const copyFactory = new CopyFactory(ENV.METAAPI_TOKEN);
 
 export const enforcementWorker = new Worker(
   'EnforcementTasks',
@@ -15,7 +15,6 @@ export const enforcementWorker = new Worker(
 
       const now = new Date();
 
-      // 1. Locate all users whose access plan window has expired but status is still marked true
       const expiredUsers = await prisma.user.findMany({
         where: {
           subscriptionStatus: true,
@@ -39,7 +38,7 @@ export const enforcementWorker = new Worker(
         return;
       }
 
-      const copyFactory = metaApi.copyFactoryApi;
+      const configApi = copyFactory.configurationApi;
 
       for (const user of expiredUsers) {
         console.log(`[Expiry Triggered] Revoking access for User ID: ${user.id}`);
@@ -47,11 +46,8 @@ export const enforcementWorker = new Worker(
         for (const account of user.tradingAccounts) {
           for (const sub of account.subscriptions) {
             try {
-              // 2. Terminate the copy link directly inside the MetaApi Cloud Engine
-              // This guarantees copying stops instantly even if our server is offline later
-              await copyFactory.deleteSubscriber(sub.metaApiSubscriberId);
+              await configApi.removeSubscriber(sub.metaApiSubscriberId);
 
-              // 3. Mark the subscription link as inactive in our database records
               await prisma.strategySubscription.update({
                 where: { id: sub.id },
                 data: { isActive: false }
@@ -60,18 +56,15 @@ export const enforcementWorker = new Worker(
               console.log(`[MetaApi Sync] Removed subscriber endpoint connection token: ${sub.metaApiSubscriberId}`);
             } catch (error: any) {
               console.error(`[MetaApi Error] Failed to revoke token connection ${sub.metaApiSubscriberId}: ${error.message}`);
-              // Continue processing other accounts; do not let one fault block the queue sweep loop
             }
           }
 
-          // 4. Update the actual account terminal status to reflect lack of credentials
           await prisma.tradingAccount.update({
             where: { id: account.id },
             data: { connectionStatus: 'DISCONNECTED' }
           });
         }
 
-        // 5. Officially turn off their global premium flag
         await prisma.user.update({
           where: { id: user.id },
           data: { subscriptionStatus: false }
