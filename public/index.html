@@ -149,7 +149,8 @@
         } else {
           alert.className = 'alert success';
           alert.textContent = 'Signed in successfully! Redirecting…';
-          setTimeout(() => { window.location.href = '/dashboard.html'; }, 800);
+          const dest = data.user.isAdmin ? '/dashboard.html' : '/user-dashboard.html';
+          setTimeout(() => { window.location.href = dest; }, 800);
         }
       } catch (err) {
         alert.className = 'alert error';

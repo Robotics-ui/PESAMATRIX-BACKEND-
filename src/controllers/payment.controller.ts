@@ -248,6 +248,23 @@ export const verifyPayment = async (req: AuthenticatedRequest, res: Response): P
   }
 };
 
+export const getPublicSettings = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const settings = await prisma.subscriptionSettings.findFirst();
+    if (!settings) {
+      res.status(404).json({ error: 'Subscription settings not configured.' });
+      return;
+    }
+    res.status(200).json({
+      feePerDay: settings.feePerDay,
+      minDays: settings.minDays,
+      maxDays: settings.maxDays
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 export const getPaymentHistory = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const payments = await prisma.payment.findMany({
