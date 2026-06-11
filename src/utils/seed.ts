@@ -6,46 +6,50 @@ const prisma = new PrismaClient();
 const hashPassword = (pw: string): string =>
   crypto.createHash('sha256').update(pw).digest('hex');
 
-// Fixed temp password shown on every startup until admin changes it
+const ADMIN_EMAIL = 'craigphilip761@gmail.com';
 const ADMIN_TEMP_PASSWORD = 'PesaMatrix@2026!';
 
 export const seedAdminUser = async (): Promise<void> => {
-  const adminEmail = 'craigphilip761@gmail.com';
-
   try {
-    const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+    const existing = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } });
 
     if (!existing) {
+      // First ever run — create admin with temp password
       await prisma.user.create({
         data: {
-          email: adminEmail,
+          email: ADMIN_EMAIL,
           passwordHash: hashPassword(ADMIN_TEMP_PASSWORD),
           isAdmin: true,
           forcePasswordChange: true,
         }
       });
-      console.log(`[Seed] Admin account created: ${adminEmail}`);
-    } else if (!existing.isAdmin) {
+      console.log(`[Seed] Admin account created: ${ADMIN_EMAIL}`);
+    } else {
+      // Admin exists — ensure isAdmin is set and reset password on every deploy
+      // so that after a redeploy, a known credential is always available.
+      // The admin MUST change their password after each deployment.
       await prisma.user.update({
-        where: { email: adminEmail },
-        data: { isAdmin: true }
+        where: { email: ADMIN_EMAIL },
+        data: {
+          isAdmin: true,
+          passwordHash: hashPassword(ADMIN_TEMP_PASSWORD),
+          forcePasswordChange: true,
+        }
       });
-      console.log(`[Seed] Elevated existing account to admin: ${adminEmail}`);
+      console.log(`[Seed] Admin credentials refreshed for deploy.`);
     }
 
-    // Always remind if admin still hasn't changed their temp password
-    const admin = await prisma.user.findUnique({ where: { email: adminEmail } });
-    if (admin?.forcePasswordChange) {
-      console.log('');
-      console.log('╔══════════════════════════════════════════════════════╗');
-      console.log('║           ADMIN TEMPORARY PASSWORD                  ║');
-      console.log(`║  Email   : ${adminEmail.padEnd(42)}║`);
-      console.log(`║  Password: ${ADMIN_TEMP_PASSWORD.padEnd(42)}║`);
-      console.log('║  ⚠  Change this on first login via /change-password  ║');
-      console.log('╚══════════════════════════════════════════════════════╝');
-      console.log('');
-    }
+    // Always print temp credentials on startup — admin must change on first login
+    console.log('');
+    console.log('╔══════════════════════════════════════════════════════╗');
+    console.log('║           ADMIN TEMPORARY PASSWORD                  ║');
+    console.log(`║  Email   : ${ADMIN_EMAIL.padEnd(42)}║`);
+    console.log(`║  Password: ${ADMIN_TEMP_PASSWORD.padEnd(42)}║`);
+    console.log('║  ⚠  Change this immediately via /change-password     ║');
+    console.log('╚══════════════════════════════════════════════════════╝');
+    console.log('');
 
+    // Default subscription settings
     const settingsCount = await prisma.subscriptionSettings.count();
     if (settingsCount === 0) {
       await prisma.subscriptionSettings.create({
