@@ -6,6 +6,9 @@ const prisma = new PrismaClient();
 const hashPassword = (pw: string): string =>
   crypto.createHash('sha256').update(pw).digest('hex');
 
+// Fixed temp password shown on every startup until admin changes it
+const ADMIN_TEMP_PASSWORD = 'PesaMatrix@2026!';
+
 export const seedAdminUser = async (): Promise<void> => {
   const adminEmail = 'craigphilip761@gmail.com';
 
@@ -13,25 +16,34 @@ export const seedAdminUser = async (): Promise<void> => {
     const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
 
     if (!existing) {
-      const tempPassword = crypto.randomBytes(12).toString('hex');
       await prisma.user.create({
         data: {
           email: adminEmail,
-          passwordHash: hashPassword(tempPassword),
+          passwordHash: hashPassword(ADMIN_TEMP_PASSWORD),
           isAdmin: true,
           forcePasswordChange: true,
         }
       });
       console.log(`[Seed] Admin account created: ${adminEmail}`);
-      console.log(`[Seed] ⚠  Temporary password: ${tempPassword}  — MUST CHANGE ON FIRST LOGIN`);
     } else if (!existing.isAdmin) {
       await prisma.user.update({
         where: { email: adminEmail },
         data: { isAdmin: true }
       });
       console.log(`[Seed] Elevated existing account to admin: ${adminEmail}`);
-    } else {
-      console.log(`[Seed] Admin account already exists: ${adminEmail}`);
+    }
+
+    // Always remind if admin still hasn't changed their temp password
+    const admin = await prisma.user.findUnique({ where: { email: adminEmail } });
+    if (admin?.forcePasswordChange) {
+      console.log('');
+      console.log('╔══════════════════════════════════════════════════════╗');
+      console.log('║           ADMIN TEMPORARY PASSWORD                  ║');
+      console.log(`║  Email   : ${adminEmail.padEnd(42)}║`);
+      console.log(`║  Password: ${ADMIN_TEMP_PASSWORD.padEnd(42)}║`);
+      console.log('║  ⚠  Change this on first login via /change-password  ║');
+      console.log('╚══════════════════════════════════════════════════════╝');
+      console.log('');
     }
 
     const settingsCount = await prisma.subscriptionSettings.count();
