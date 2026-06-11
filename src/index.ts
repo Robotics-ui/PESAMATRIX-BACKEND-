@@ -20,17 +20,26 @@ import { seedAdminUser } from './utils/seed';
 
 const app = express();
 
+const ALLOWED_ORIGINS: string[] = [
+  'https://pesamatrix-signal-fx-f--signalfx.replit.app',
+];
+if (process.env.EXTRA_CORS_ORIGIN) {
+  ALLOWED_ORIGINS.push(process.env.EXTRA_CORS_ORIGIN);
+}
+if (process.env.REPLIT_DEV_DOMAIN) {
+  ALLOWED_ORIGINS.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
+}
+
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    const allowed = [
-      'https://pesamatrix-signal-fx-f--signalfx.replit.app',
-      process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null
-    ].filter(Boolean);
-    if (!origin || allowed.includes(origin as string)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return callback(null, true);
+    // Allow any *.replit.app subdomain (covers all Replit-hosted frontends)
+    if (origin.endsWith('.replit.app') || ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
     }
+    console.error(`[CORS] Blocked origin: ${origin}`);
+    callback(new Error(`CORS: origin not allowed — ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -124,7 +133,12 @@ app.listen(Number(ENV.PORT), '0.0.0.0', async () => {
 `);
 
   // Seed admin user and default settings on every startup (idempotent)
-  await seedAdminUser();
+  try {
+    await seedAdminUser();
+  } catch (err: any) {
+    console.error('[Seed] FATAL — seed failed, admin password may not be set:', err.message);
+    console.error(err.stack);
+  }
 
   if (IS_REDIS_CONFIGURED) {
     try {
